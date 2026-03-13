@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { initializeApp } from "firebase/app";
+import { useState, useEffect, useRef } from "react";
+import { initializeApp, getApps } from "firebase/app";
 import { getDatabase, ref, set, onValue, update } from "firebase/database";
 
 const firebaseConfig = {
@@ -12,7 +12,8 @@ const firebaseConfig = {
   appId: "1:572277612304:web:c217771e79bef2654dcf95"
 };
 
-const firebaseApp = initializeApp(firebaseConfig);
+// Prevent re-initializing on hot reload
+const firebaseApp = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
 const db = getDatabase(firebaseApp);
 
 const ROUND_NAMES = ["Round of 16", "Quarterfinals", "Semifinals", "Final"];
@@ -25,9 +26,8 @@ function mkKey(r, m) { return `r${r}_m${m}`; }
 function initRounds(names) {
   const players = names.map((n, i) => ({ id: i, name: n }));
   const pairs = [];
-  for (let i = 0; i < players.length; i += 2) {
+  for (let i = 0; i < players.length; i += 2)
     pairs.push({ a: players[i], b: players[i + 1] });
-  }
   return [pairs];
 }
 
@@ -39,9 +39,8 @@ function advanceWinners(rounds, votes, currentRound) {
   });
   if (winners.length === 1) return { champion: winners[0], newRounds: rounds, newRoundIdx: currentRound };
   const np = [];
-  for (let i = 0; i < winners.length; i += 2) {
+  for (let i = 0; i < winners.length; i += 2)
     np.push({ a: winners[i], b: winners[i + 1] });
-  }
   return { champion: null, newRounds: [...rounds, np], newRoundIdx: currentRound + 1 };
 }
 
@@ -56,9 +55,8 @@ function computeAllWinner(rounds, votes) {
     });
     if (winners.length === 1) return { champion: winners[0], rounds: ar };
     const np = [];
-    for (let i = 0; i < winners.length; i += 2) {
+    for (let i = 0; i < winners.length; i += 2)
       np.push({ a: winners[i], b: winners[i + 1] });
-    }
     ar = [...ar, np];
     ri++;
   }
@@ -75,19 +73,17 @@ function buildSimRounds(rounds, votes) {
       return v.a >= v.b ? m.a : m.b;
     });
     const np = [];
-    for (let i = 0; i < winners.length; i += 2) {
+    for (let i = 0; i < winners.length; i += 2)
       np.push({ a: winners[i], b: winners[i + 1] });
-    }
     simR.push(np);
     ri++;
   }
   return simR;
 }
 
-// ─── Bracket SVG ─────────────────────────────────────────────────────────────
+// ─── Bracket SVG ──────────────────────────────────────────────────────────────
 function BracketSVG({ rounds, votes, activeRound, activeMatch, mode, animWinner }) {
   const W = 680, BOX_W = 110, BOX_H = 28, GAP = 10;
-
   const isDone = (ri, mi) => {
     const v = votes[mkKey(ri, mi)] || { a: 0, b: 0 };
     return v.a + v.b > 0 && ri < activeRound;
@@ -98,27 +94,12 @@ function BracketSVG({ rounds, votes, activeRound, activeMatch, mode, animWinner 
   };
   const isActive = (ri, mi) => mode === "single" && ri === activeRound && mi === activeMatch;
 
-  // Build only confirmed rounds (no projection)
-  const confirmed = [...rounds];
-
-  // For each round, compute layout
   const totalRounds = 4;
-  const roundCount = confirmed.length;
-
-  // Show up to current round + 1 (next empty round)
   const visibleRounds = Math.min(activeRound + 2, totalRounds);
-
-  // Column width
   const colW = W / visibleRounds;
-
-  // Number of slots in round 0 = 16 names = 8 matches
-  // Each subsequent round halves
   const matchCount = (ri) => Math.pow(2, totalRounds - 1 - ri) / 2;
-
-  // Height based on round 0 slots
   const svgH = Math.max(400, matchCount(0) * (BOX_H * 2 + GAP + 20) + 60);
-
-  const getMatch = (ri, mi) => confirmed[ri] && confirmed[ri][mi];
+  const getMatch = (ri, mi) => rounds[ri] && rounds[ri][mi];
 
   const NameBox = ({ ri, mi, side, x, y, name, empty }) => {
     const active = isActive(ri, mi);
@@ -127,11 +108,11 @@ function BracketSVG({ rounds, votes, activeRound, activeMatch, mode, animWinner 
     const isL = done && winSide(ri, mi) !== side;
     const isAW = animWinner && animWinner.ri === ri && animWinner.mi === mi && animWinner.side === side;
     let fill = "#f3f4f6", stroke = "#e5e7eb", textFill = "#374151", opacity = 1;
-    if (empty)   { fill = "#fafafa"; stroke = "#f0f0f0"; textFill = "#d1d5db"; }
-    if (active)  { fill = "#eef2ff"; stroke = "#6366f1"; textFill = "#4338ca"; }
-    if (isW)     { fill = "#dcfce7"; stroke = "#16a34a"; textFill = "#15803d"; }
-    if (isL)     { fill = "#f9fafb"; stroke = "#e5e7eb"; textFill = "#9ca3af"; opacity = 0.5; }
-    if (isAW)    { fill = "#fef9c3"; stroke = "#ca8a04"; textFill = "#92400e"; }
+    if (empty)  { fill = "#fafafa"; stroke = "#f0f0f0"; textFill = "#d1d5db"; }
+    if (active) { fill = "#eef2ff"; stroke = "#6366f1"; textFill = "#4338ca"; }
+    if (isW)    { fill = "#dcfce7"; stroke = "#16a34a"; textFill = "#15803d"; }
+    if (isL)    { fill = "#f9fafb"; stroke = "#e5e7eb"; textFill = "#9ca3af"; opacity = 0.5; }
+    if (isAW)   { fill = "#fef9c3"; stroke = "#ca8a04"; textFill = "#92400e"; }
     const label = empty ? "TBD" : name ? (name.length > 12 ? name.slice(0, 12) + "…" : name) : "TBD";
     return (
       <g opacity={opacity}>
@@ -145,13 +126,10 @@ function BracketSVG({ rounds, votes, activeRound, activeMatch, mode, animWinner 
   };
 
   const elems = [];
-
   for (let ri = 0; ri < visibleRounds; ri++) {
     const matches = matchCount(ri);
     const slotH = svgH / matches;
     const colX = ri * colW + (colW - BOX_W) / 2;
-
-    // Column header
     elems.push(
       <text key={`hdr${ri}`} x={ri * colW + colW / 2} y={24} textAnchor="middle"
         fontSize={10} fill={ri === activeRound ? "#6366f1" : "#9ca3af"}
@@ -159,26 +137,18 @@ function BracketSVG({ rounds, votes, activeRound, activeMatch, mode, animWinner 
         {ROUND_NAMES[ri] || `Round ${ri + 1}`}
       </text>
     );
-
     for (let mi = 0; mi < matches; mi++) {
       const m = getMatch(ri, mi);
       const centerY = 40 + slotH * mi + slotH / 2;
       const aY = centerY - BOX_H - GAP / 2;
       const bY = centerY + GAP / 2;
-
       const isEmpty = !m;
-      const aName = m ? m.a.name : "";
-      const bName = m ? m.b.name : "";
-
       elems.push(
         <g key={`m${ri}_${mi}`}>
-          <NameBox ri={ri} mi={mi} side="a" x={colX} y={aY} name={aName} empty={isEmpty} />
-          <NameBox ri={ri} mi={mi} side="b" x={colX} y={bY} name={bName} empty={isEmpty} />
-
-          {/* Connector to next round */}
+          <NameBox ri={ri} mi={mi} side="a" x={colX} y={aY} name={m?.a?.name} empty={isEmpty} />
+          <NameBox ri={ri} mi={mi} side="b" x={colX} y={bY} name={m?.b?.name} empty={isEmpty} />
           {ri < visibleRounds - 1 && !isEmpty && (() => {
-            const nextMatches = matchCount(ri + 1);
-            const nextSlotH = svgH / nextMatches;
+            const nextSlotH = svgH / matchCount(ri + 1);
             const nextMi = Math.floor(mi / 2);
             const nextCenterY = 40 + nextSlotH * nextMi + nextSlotH / 2;
             const nextY = mi % 2 === 0 ? nextCenterY - BOX_H - GAP / 2 : nextCenterY + GAP / 2;
@@ -188,15 +158,12 @@ function BracketSVG({ rounds, votes, activeRound, activeMatch, mode, animWinner 
             const midX = fromX + (toX - fromX) / 2;
             const toY = nextY + BOX_H / 2;
             const clr = isActive(ri, mi) ? "#6366f1" : isDone(ri, mi) ? "#16a34a" : "#e5e7eb";
-            const sw = isDone(ri, mi) ? 1.5 : 0.7;
             return (
               <path key={`conn${ri}_${mi}`}
                 d={`M${fromX} ${fromY} L${midX} ${fromY} L${midX} ${toY} L${toX} ${toY}`}
-                fill="none" stroke={clr} strokeWidth={sw} />
+                fill="none" stroke={clr} strokeWidth={isDone(ri, mi) ? 1.5 : 0.7} />
             );
           })()}
-
-          {/* Active ring */}
           {isActive(ri, mi) && (
             <rect x={colX - 4} y={aY - 4} width={BOX_W + 8} height={BOX_H * 2 + GAP + 8} rx={8}
               fill="none" stroke="#6366f1" strokeWidth={1.5} strokeDasharray="4 2" opacity={0.6} />
@@ -218,7 +185,7 @@ function CountdownReveal({ match, votes, onDone, onRevote }) {
   const [count, setCount] = useState(3);
   const [revealed, setRevealed] = useState(false);
   useEffect(() => {
-    if (count > 0) { const t = setTimeout(() => setCount(c => c-1), 900); return () => clearTimeout(t); }
+    if (count > 0) { const t = setTimeout(() => setCount(c => c - 1), 900); return () => clearTimeout(t); }
     else setRevealed(true);
   }, [count]);
   const v = votes || { a: 0, b: 0 };
@@ -235,7 +202,7 @@ function CountdownReveal({ match, votes, onDone, onRevote }) {
     <div style={{ textAlign: "center", padding: "20px 0" }}>
       <div style={{ fontSize: 12, color: "#9ca3af", marginBottom: 6 }}>{match.a.name} {v.a} — {v.b} {match.b.name}</div>
       <div style={{ background: "#e5e7eb", borderRadius: 99, height: 8, margin: "0 0 16px" }}>
-        <div style={{ width: `${total ? (v.a/total)*100 : 50}%`, background: "#6366f1", height: "100%", borderRadius: 99 }} />
+        <div style={{ width: `${total ? (v.a / total) * 100 : 50}%`, background: "#6366f1", height: "100%", borderRadius: 99 }} />
       </div>
       <div style={{ background: "#fef9c3", borderRadius: 12, padding: "16px 24px", display: "inline-block", border: "2px solid #ca8a04", marginBottom: 16 }}>
         <div style={{ fontSize: 11, color: "#92400e" }}>🏆 Winner</div>
@@ -254,19 +221,22 @@ export default function App() {
   const [view, setView] = useState("loading");
   const [isAdmin, setIsAdmin] = useState(false);
   const [names, setNames] = useState(Array(16).fill(""));
-  const [game, setGame] = useState(null);   // live from Firebase
-  const [votes, setVotes] = useState({});   // live from Firebase
+  const [game, setGame] = useState(null);
+  const [votes, setVotes] = useState({});
   const [voterVotes, setVoterVotes] = useState({});
   const [mode, setMode] = useState(null);
   const [showCountdown, setShowCountdown] = useState(false);
   const [bracketView, setBracketView] = useState(false);
-  const [tieMatch, setTieMatch] = useState(null);
   const [animWinner, setAnimWinner] = useState(null);
   const [copied, setCopied] = useState(false);
 
+  // Track previous round to detect round changes for voters
+  const prevRoundRef = useRef(null);
+  const prevMatchRef = useRef(null);
+
   const voteLink = `${typeof window !== "undefined" ? window.location.href.split("?")[0] : ""}?join=1`;
 
-  // Subscribe to Firebase in real time
+  // Subscribe to Firebase
   useEffect(() => {
     const gameRef = ref(db, GAME_REF);
     const votesRef = ref(db, VOTES_REF);
@@ -274,14 +244,13 @@ export default function App() {
     const unsubGame = onValue(gameRef, snap => {
       const data = snap.val();
       setGame(data);
-      if (data) setMode(data.mode);
+      if (data?.mode) setMode(data.mode);
     });
 
     const unsubVotes = onValue(votesRef, snap => {
       setVotes(snap.val() || {});
     });
 
-    // Check if voter joining via link
     const params = new URLSearchParams(window.location.search);
     if (params.get("join") === "1") {
       setIsAdmin(false);
@@ -292,6 +261,24 @@ export default function App() {
 
     return () => { unsubGame(); unsubVotes(); };
   }, []);
+
+  // For voters in "single" mode: show bracket view when round advances
+  useEffect(() => {
+    if (!game || isAdmin) return;
+    const { currentRound, currentMatch, mode: gMode } = game;
+
+    // Round advanced → show bracket interstitial
+    if (gMode === "single" && prevRoundRef.current !== null && prevRoundRef.current !== currentRound) {
+      setBracketView(true);
+    }
+    prevRoundRef.current = currentRound;
+    prevMatchRef.current = currentMatch;
+  }, [game?.currentRound, game?.currentMatch, isAdmin]);
+
+  // Voter: redirect to results when champion set
+  useEffect(() => {
+    if (!isAdmin && game?.champion) setView("results");
+  }, [game?.champion, isAdmin]);
 
   const pushGame = (updates) => update(ref(db, GAME_REF), updates);
 
@@ -304,6 +291,8 @@ export default function App() {
       votingOpen: false, champion: null,
     });
     set(ref(db, VOTES_REF), {});
+    setVoterVotes({});
+    setBracketView(false);
     setIsAdmin(true);
     setView("bracket");
   };
@@ -311,17 +300,19 @@ export default function App() {
   const handleVote = (key, side) => {
     if (voterVotes[key] !== undefined) return;
     setVoterVotes(prev => ({ ...prev, [key]: side }));
-    const curVotes = votes && votes[key] ? votes[key] : { a: 0, b: 0 };
-    const newVotes = {
+    const curVotes = votes?.[key] || { a: 0, b: 0 };
+    set(ref(db, `bracket/votes/${key}`), {
       a: side === "a" ? (curVotes.a || 0) + 1 : (curVotes.a || 0),
       b: side === "b" ? (curVotes.b || 0) + 1 : (curVotes.b || 0),
-    };
-    set(ref(db, `bracket/votes/${key}`), newVotes);
+    });
   };
 
   const handleOpenVoting = () => set(ref(db, GAME_REF), { ...game, votingOpen: true });
 
-  const handleCloseAndReveal = () => setShowCountdown(true);
+  const handleCloseAndReveal = () => {
+    set(ref(db, GAME_REF), { ...game, votingOpen: false });
+    setShowCountdown(true);
+  };
 
   const handleRevote = () => {
     set(ref(db, `bracket/votes/${curKey}`), { a: 0, b: 0 });
@@ -370,8 +361,8 @@ export default function App() {
 
   const handleShuffle = () => {
     const sh = [...names];
-    for (let i = sh.length-1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i+1));
+    for (let i = sh.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
       [sh[i], sh[j]] = [sh[j], sh[i]];
     }
     setNames(sh);
@@ -383,32 +374,41 @@ export default function App() {
     });
   };
 
-  // Derive current state from live Firebase game
+  // Derive live state
   const rounds       = game?.rounds || null;
-  const currentRound = game?.currentRound || 0;
-  const currentMatch = game?.currentMatch || 0;
-  const votingOpen   = game?.votingOpen || false;
+  const currentRound = game?.currentRound ?? 0;
+  const currentMatch = game?.currentMatch ?? 0;
+  const votingOpen   = game?.votingOpen ?? false;
   const champion     = game?.champion || null;
-  const curMatch     = rounds && rounds[currentRound] && rounds[currentRound][currentMatch];
+  const curMatch     = rounds?.[currentRound]?.[currentMatch];
   const curKey       = mkKey(currentRound, currentMatch);
-
-  // Redirect voter to results if champion set
-  useEffect(() => {
-    if (!isAdmin && champion) setView("results");
-  }, [champion, isAdmin]);
-
-  // Voter: auto-show bracket when new round starts
-  useEffect(() => {
-    if (!isAdmin && game?.mode === "single" && game?.votingOpen === false) {
-      setBracketView(true);
-    }
-  }, [game?.currentRound]);
 
   // ── LOADING ──
   if (view === "loading") return (
     <div style={s.page}><div style={s.card}>
       <div style={{ fontSize: 48, marginBottom: 8 }}>👶</div>
       <p style={s.sub}>Connecting…</p>
+    </div></div>
+  );
+
+  // ── RESULTS ──
+  if (champion || view === "results") return (
+    <div style={s.page}><div style={s.card}>
+      <div style={{ fontSize: 56 }}>🎉</div>
+      <h2 style={{ ...s.title, color: "#6366f1" }}>The Family Has Spoken!</h2>
+      <div style={{ background: "#eef2ff", borderRadius: 16, padding: "20px 40px", margin: "16px 0", display: "inline-block" }}>
+        <p style={{ margin: 0, fontSize: 12, color: "#6b7280" }}>Baby Boy's Name</p>
+        <p style={{ margin: "4px 0 0", fontSize: 34, fontWeight: 800, color: "#4f46e5" }}>{champion?.name}</p>
+      </div>
+      <p style={s.sub}>Congratulations! 👶💙</p>
+      {isAdmin && (
+        <button style={{ ...s.btn, ...s.btnGhost }} onClick={() => {
+          set(ref(db, "bracket"), null);
+          setGame(null); setVotes({}); setVoterVotes({});
+          prevRoundRef.current = null; prevMatchRef.current = null;
+          setView("home");
+        }}>🔁 Start Over</button>
+      )}
     </div></div>
   );
 
@@ -434,7 +434,8 @@ export default function App() {
           { id: "all",    icon: "📋", label: "All at Once",    desc: "Fill out the whole bracket upfront" },
           { id: "single", icon: "🎯", label: "One Game at a Time", desc: "Vote one game, see winner — most dramatic!" },
         ].map(opt => (
-          <div key={opt.id} onClick={() => setMode(opt.id)} style={{ border: `2px solid ${mode === opt.id ? "#6366f1" : "#e5e7eb"}`, borderRadius: 10, padding: "10px 14px", cursor: "pointer", display: "flex", alignItems: "center", gap: 12, background: mode === opt.id ? "#eef2ff" : "#fff" }}>
+          <div key={opt.id} onClick={() => setMode(opt.id)}
+            style={{ border: `2px solid ${mode === opt.id ? "#6366f1" : "#e5e7eb"}`, borderRadius: 10, padding: "10px 14px", cursor: "pointer", display: "flex", alignItems: "center", gap: 12, background: mode === opt.id ? "#eef2ff" : "#fff" }}>
             <span style={{ fontSize: 22 }}>{opt.icon}</span>
             <div style={{ textAlign: "left" }}>
               <p style={{ margin: 0, fontWeight: 600, color: mode === opt.id ? "#4f46e5" : "#1f2937", fontSize: 14 }}>{opt.label}</p>
@@ -448,8 +449,8 @@ export default function App() {
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 16 }}>
         {names.map((n, i) => (
           <div key={i} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <span style={s.seed}>#{i+1}</span>
-            <input style={{ ...s.input, margin: 0, flex: 1 }} placeholder={`Name ${i+1}`} value={n}
+            <span style={s.seed}>#{i + 1}</span>
+            <input style={{ ...s.input, margin: 0, flex: 1 }} placeholder={`Name ${i + 1}`} value={n}
               onChange={e => { const u = [...names]; u[i] = e.target.value; setNames(u); }} />
           </div>
         ))}
@@ -460,7 +461,7 @@ export default function App() {
     </div></div>
   );
 
-  // ── BRACKET ADMIN ──
+  // ── BRACKET (ADMIN) ──
   if (view === "bracket" && rounds) {
     const curMatches = rounds[currentRound];
     return (
@@ -468,8 +469,8 @@ export default function App() {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
           <h2 style={{ ...s.title, margin: 0, fontSize: 18 }}>
             {mode === "single"
-              ? `🎯 ${ROUND_NAMES[currentRound] || `Round ${currentRound+1}`} · Game ${currentMatch+1}/${curMatches.length}`
-              : `🏆 ${ROUND_NAMES[currentRound] || `Round ${currentRound+1}`}`}
+              ? `🎯 ${ROUND_NAMES[currentRound] || `Round ${currentRound + 1}`} · Game ${currentMatch + 1}/${curMatches.length}`
+              : `🏆 ${ROUND_NAMES[currentRound] || `Round ${currentRound + 1}`}`}
           </h2>
           <span style={{ fontSize: 10, background: "#eef2ff", color: "#6366f1", padding: "3px 8px", borderRadius: 99, fontWeight: 600 }}>
             {mode === "single" ? "🎯 One Game" : mode === "all" ? "📋 All at Once" : "🔄 By Round"}
@@ -483,6 +484,17 @@ export default function App() {
           </button>
         </div>
         <BracketSVG rounds={rounds} votes={votes} activeRound={currentRound} activeMatch={currentMatch} mode={mode} animWinner={animWinner} />
+
+        {/* Live vote tally for single mode */}
+        {mode === "single" && votingOpen && curMatch && (
+          <div style={{ background: "#f5f3ff", border: "1px solid #c4b5fd", borderRadius: 10, padding: "10px 14px", margin: "10px 0", textAlign: "center" }}>
+            <p style={{ margin: "0 0 4px", fontSize: 12, color: "#7c3aed", fontWeight: 600 }}>Live Votes</p>
+            <p style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "#4c1d95" }}>
+              {curMatch.a.name}: {votes[curKey]?.a || 0} — {votes[curKey]?.b || 0} :{curMatch.b.name}
+            </p>
+          </div>
+        )}
+
         {showCountdown && curMatch && (
           <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }}>
             <div style={{ background: "#fff", borderRadius: 20, padding: 32, minWidth: 280, textAlign: "center" }}>
@@ -491,11 +503,12 @@ export default function App() {
             </div>
           </div>
         )}
+
         <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
           {!votingOpen && <button style={s.btn} onClick={handleOpenVoting}>🗳️ Open Voting</button>}
-          {votingOpen && mode === "rounds" && <button style={{ ...s.btn, background: "#16a34a" }} onClick={handleAdvanceRounds}>✅ Close &amp; Advance</button>}
-          {votingOpen && mode === "all"    && <button style={{ ...s.btn, background: "#16a34a" }} onClick={handleAdvanceAll}>✅ Reveal Champion</button>}
-          {votingOpen && mode === "single" && <button style={{ ...s.btn, background: "#16a34a" }} onClick={handleCloseAndReveal}>✅ Close &amp; Reveal</button>}
+          {votingOpen && mode === "rounds"  && <button style={{ ...s.btn, background: "#16a34a" }} onClick={handleAdvanceRounds}>✅ Close &amp; Advance</button>}
+          {votingOpen && mode === "all"     && <button style={{ ...s.btn, background: "#16a34a" }} onClick={handleAdvanceAll}>✅ Reveal Champion</button>}
+          {votingOpen && mode === "single"  && <button style={{ ...s.btn, background: "#16a34a" }} onClick={handleCloseAndReveal}>✅ Close &amp; Reveal</button>}
           <button style={{ ...s.btn, ...s.btnGhost }} onClick={() => { setIsAdmin(false); setView("home"); }}>Home</button>
         </div>
       </div></div>
@@ -512,9 +525,10 @@ export default function App() {
       </div></div>
     );
 
+    // Bracket interstitial between rounds (single mode only)
     if (bracketView && mode === "single") return (
       <div style={s.page}><div style={{ ...s.card, maxWidth: 720, padding: "20px 16px" }}>
-        <h2 style={s.title}>📊 {ROUND_NAMES[currentRound] || `Round ${currentRound+1}`}</h2>
+        <h2 style={s.title}>📊 {ROUND_NAMES[currentRound] || `Round ${currentRound + 1}`}</h2>
         <p style={s.sub}>Here's the bracket — voting opens soon!</p>
         <BracketSVG rounds={rounds} votes={votes} activeRound={currentRound} activeMatch={currentMatch} mode={mode} />
         {votingOpen
@@ -524,24 +538,23 @@ export default function App() {
       </div></div>
     );
 
+    // Waiting for voting to open
     if (!votingOpen) return (
       <div style={s.page}><div style={s.card}>
         <div style={{ fontSize: 40 }}>⏳</div>
         <h2 style={s.title}>Voting Not Open Yet</h2>
-        <p style={s.sub}>You'll be taken straight in when the admin opens voting — keep this page open!</p>
+        <p style={s.sub}>You'll be taken in automatically when the admin opens voting — keep this page open!</p>
         {rounds && <BracketSVG rounds={rounds} votes={votes} activeRound={currentRound} activeMatch={currentMatch} mode={mode} />}
       </div></div>
     );
 
-    // Single game
+    // ── Single game voting ──
     if (mode === "single" && curMatch) {
       const picked = voterVotes[curKey];
-      const isTie = !votingOpen && votes[curKey] && votes[curKey].a === votes[curKey].b && votes[curKey].a > 0;
       return (
         <div style={s.page}><div style={{ ...s.card, maxWidth: 420 }}>
-          <p style={{ fontSize: 12, color: "#9ca3af", margin: "0 0 4px" }}>{ROUND_NAMES[currentRound] || `Round ${currentRound+1}`} · Game {currentMatch+1}</p>
+          <p style={{ fontSize: 12, color: "#9ca3af", margin: "0 0 4px" }}>{ROUND_NAMES[currentRound] || `Round ${currentRound + 1}`} · Game {currentMatch + 1}</p>
           <h2 style={{ ...s.title, fontSize: 18, marginBottom: 4 }}>Which name do you prefer?</h2>
-          {isTie && <div style={{ background: "#fef9c3", border: "1px solid #ca8a04", borderRadius: 10, padding: "10px", marginBottom: 12 }}><p style={{ margin: 0, color: "#92400e", fontWeight: 600, fontSize: 13 }}>🤝 It's a tie! The admin will start a revote.</p></div>}
           <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
             {SIDES.map(side => {
               const nm = side === "a" ? curMatch.a.name : curMatch.b.name;
@@ -554,24 +567,24 @@ export default function App() {
               );
             })}
           </div>
-          {picked && !isTie && <p style={{ color: "#16a34a", fontWeight: 600, marginTop: 12, textAlign: "center", fontSize: 13 }}>✅ Voted! The next game will open automatically.</p>}
+          {picked && <p style={{ color: "#16a34a", fontWeight: 600, marginTop: 12, textAlign: "center", fontSize: 13 }}>✅ Voted! The next game opens automatically.</p>}
         </div></div>
       );
     }
 
-    // Rounds
+    // ── Round-by-round voting ──
     if (mode === "rounds") {
       const curMatches = rounds[currentRound];
       const allVoted = curMatches.every((_, i) => voterVotes[mkKey(currentRound, i)] !== undefined);
       return (
         <div style={s.page}><div style={{ ...s.card, maxWidth: 480 }}>
-          <h2 style={s.title}>🗳️ {ROUND_NAMES[currentRound] || `Round ${currentRound+1}`}</h2>
+          <h2 style={s.title}>🗳️ {ROUND_NAMES[currentRound] || `Round ${currentRound + 1}`}</h2>
           <p style={s.sub}>Pick your favorite in each matchup</p>
           {curMatches.map((match, i) => {
             const key = mkKey(currentRound, i), picked = voterVotes[key];
             return (
               <div key={i} style={s.matchCard}>
-                <p style={{ fontSize: 11, color: "#9ca3af", margin: "0 0 8px", textAlign: "center" }}>Match {i+1}</p>
+                <p style={{ fontSize: 11, color: "#9ca3af", margin: "0 0 8px", textAlign: "center" }}>Match {i + 1}</p>
                 <div style={{ display: "flex", gap: 10 }}>
                   {SIDES.map(side => {
                     const nm = side === "a" ? match.a.name : match.b.name;
@@ -587,12 +600,12 @@ export default function App() {
               </div>
             );
           })}
-          {allVoted && <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 10, padding: 12, textAlign: "center" }}><p style={{ color: "#16a34a", fontWeight: 600, margin: 0 }}>✅ All votes in! The next round will open automatically.</p></div>}
+          {allVoted && <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 10, padding: 12, textAlign: "center" }}><p style={{ color: "#16a34a", fontWeight: 600, margin: 0 }}>✅ All votes in! The next round opens automatically.</p></div>}
         </div></div>
       );
     }
 
-    // All at once
+    // ── All at once voting ──
     if (mode === "all") {
       const simR = buildSimRounds(rounds, votes);
       const total = simR.reduce((sum, r) => sum + r.length, 0);
@@ -603,15 +616,15 @@ export default function App() {
           <p style={s.sub}>{done}/{total} picks made</p>
           {simR.map((rnd, ri2) => (
             <div key={ri2} style={{ marginBottom: 16 }}>
-              <p style={{ fontWeight: 600, color: "#6366f1", fontSize: 12, margin: "0 0 8px", textAlign: "left" }}>{ROUND_NAMES[ri2] || `Round ${ri2+1}`}</p>
+              <p style={{ fontWeight: 600, color: "#6366f1", fontSize: 12, margin: "0 0 8px", textAlign: "left" }}>{ROUND_NAMES[ri2] || `Round ${ri2 + 1}`}</p>
               {rnd.map((match, mi) => {
                 const key = mkKey(ri2, mi), picked = voterVotes[key];
-                const tbd = !match.a.name || !match.b.name;
+                const tbd = !match.a?.name || !match.b?.name;
                 return (
                   <div key={mi} style={{ ...s.matchCard, marginBottom: 8, opacity: tbd ? 0.4 : 1 }}>
                     <div style={{ display: "flex", gap: 8 }}>
                       {SIDES.map(side => {
-                        const nm = side === "a" ? match.a.name : match.b.name;
+                        const nm = side === "a" ? match.a?.name : match.b?.name;
                         const chosen = picked === side, other = picked && picked !== side;
                         return (
                           <button key={side} onClick={() => !tbd && handleVote(key, side)} disabled={!!picked || tbd}
@@ -631,20 +644,6 @@ export default function App() {
       );
     }
   }
-
-  // ── RESULTS ──
-  if (champion) return (
-    <div style={s.page}><div style={s.card}>
-      <div style={{ fontSize: 56 }}>🎉</div>
-      <h2 style={{ ...s.title, color: "#6366f1" }}>The Family Has Spoken!</h2>
-      <div style={{ background: "#eef2ff", borderRadius: 16, padding: "20px 40px", margin: "16px 0", display: "inline-block" }}>
-        <p style={{ margin: 0, fontSize: 12, color: "#6b7280" }}>Baby Boy's Name</p>
-        <p style={{ margin: "4px 0 0", fontSize: 34, fontWeight: 800, color: "#4f46e5" }}>{champion.name}</p>
-      </div>
-      <p style={s.sub}>Congratulations! 👶💙</p>
-      {isAdmin && <button style={{ ...s.btn, ...s.btnGhost }} onClick={() => { set(ref(db, "bracket"), null); setGame(null); setVotes({}); setView("home"); }}>🔁 Start Over</button>}
-    </div></div>
-  );
 
   return <div style={s.page}><div style={s.card}><p style={s.sub}>Loading…</p></div></div>;
 }
