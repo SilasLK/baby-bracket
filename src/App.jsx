@@ -12,7 +12,6 @@ const firebaseConfig = {
   appId: "1:572277612304:web:c217771e79bef2654dcf95"
 };
 
-// Prevent re-initializing on hot reload
 const firebaseApp = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
 const db = getDatabase(firebaseApp);
 
@@ -82,8 +81,17 @@ function buildSimRounds(rounds, votes) {
 }
 
 // ─── Bracket SVG ──────────────────────────────────────────────────────────────
+// Always renders all 4 rounds. Confirmed rounds show real names; future rounds show TBD.
+// Future rounds are NEVER populated with projected/simulated winners.
 function BracketSVG({ rounds, votes, activeRound, activeMatch, mode, animWinner }) {
-  const W = 680, BOX_W = 110, BOX_H = 28, GAP = 10;
+  const W = 720, BOX_W = 115, BOX_H = 28, GAP = 10;
+  const TOTAL_ROUNDS = 4;
+  const colW = W / TOTAL_ROUNDS;
+
+  // matchCount(ri) = number of matches in that round
+  const matchCount = (ri) => Math.pow(2, TOTAL_ROUNDS - 1 - ri) / 2; // 8,4,2,1
+  const svgH = Math.max(420, matchCount(0) * (BOX_H * 2 + GAP + 20) + 60);
+
   const isDone = (ri, mi) => {
     const v = votes[mkKey(ri, mi)] || { a: 0, b: 0 };
     return v.a + v.b > 0 && ri < activeRound;
@@ -94,29 +102,25 @@ function BracketSVG({ rounds, votes, activeRound, activeMatch, mode, animWinner 
   };
   const isActive = (ri, mi) => mode === "single" && ri === activeRound && mi === activeMatch;
 
-  const totalRounds = 4;
-  const visibleRounds = Math.min(activeRound + 2, totalRounds);
-  const colW = W / visibleRounds;
-  const matchCount = (ri) => Math.pow(2, totalRounds - 1 - ri) / 2;
-  const svgH = Math.max(400, matchCount(0) * (BOX_H * 2 + GAP + 20) + 60);
-  const getMatch = (ri, mi) => rounds[ri] && rounds[ri][mi];
+  // Only use confirmed rounds — never project future rounds
+  const getMatch = (ri, mi) => (rounds[ri] ? rounds[ri][mi] : null);
 
-  const NameBox = ({ ri, mi, side, x, y, name, empty }) => {
+  const NameBox = ({ ri, mi, side, x, y, name, isTbd }) => {
     const active = isActive(ri, mi);
     const done = isDone(ri, mi);
     const isW = done && winSide(ri, mi) === side;
     const isL = done && winSide(ri, mi) !== side;
     const isAW = animWinner && animWinner.ri === ri && animWinner.mi === mi && animWinner.side === side;
     let fill = "#f3f4f6", stroke = "#e5e7eb", textFill = "#374151", opacity = 1;
-    if (empty)  { fill = "#fafafa"; stroke = "#f0f0f0"; textFill = "#d1d5db"; }
+    if (isTbd)  { fill = "#fafafa"; stroke = "#eeeeee"; textFill = "#d1d5db"; }
     if (active) { fill = "#eef2ff"; stroke = "#6366f1"; textFill = "#4338ca"; }
     if (isW)    { fill = "#dcfce7"; stroke = "#16a34a"; textFill = "#15803d"; }
     if (isL)    { fill = "#f9fafb"; stroke = "#e5e7eb"; textFill = "#9ca3af"; opacity = 0.5; }
     if (isAW)   { fill = "#fef9c3"; stroke = "#ca8a04"; textFill = "#92400e"; }
-    const label = empty ? "TBD" : name ? (name.length > 12 ? name.slice(0, 12) + "…" : name) : "TBD";
+    const label = isTbd ? "TBD" : (name?.length > 13 ? name.slice(0, 13) + "…" : name) || "TBD";
     return (
       <g opacity={opacity}>
-        <rect x={x} y={y} width={BOX_W} height={BOX_H} rx={5} fill={fill} stroke={stroke} strokeWidth={active ? 1.8 : 0.7} />
+        <rect x={x} y={y} width={BOX_W} height={BOX_H} rx={5} fill={fill} stroke={stroke} strokeWidth={active ? 1.8 : 0.8} />
         <text x={x + BOX_W / 2} y={y + BOX_H / 2} textAnchor="middle" dominantBaseline="central"
           fontSize={11} fontWeight={active || isW ? 700 : 400} fill={textFill} fontFamily="system-ui,sans-serif">
           {label}
@@ -126,28 +130,35 @@ function BracketSVG({ rounds, votes, activeRound, activeMatch, mode, animWinner 
   };
 
   const elems = [];
-  for (let ri = 0; ri < visibleRounds; ri++) {
+
+  for (let ri = 0; ri < TOTAL_ROUNDS; ri++) {
     const matches = matchCount(ri);
     const slotH = svgH / matches;
     const colX = ri * colW + (colW - BOX_W) / 2;
+    const confirmed = ri < rounds.length; // this round has real data
+
     elems.push(
-      <text key={`hdr${ri}`} x={ri * colW + colW / 2} y={24} textAnchor="middle"
+      <text key={`hdr${ri}`} x={ri * colW + colW / 2} y={22} textAnchor="middle"
         fontSize={10} fill={ri === activeRound ? "#6366f1" : "#9ca3af"}
         fontWeight={ri === activeRound ? 700 : 400} fontFamily="system-ui,sans-serif">
         {ROUND_NAMES[ri] || `Round ${ri + 1}`}
       </text>
     );
+
     for (let mi = 0; mi < matches; mi++) {
-      const m = getMatch(ri, mi);
+      const m = confirmed ? getMatch(ri, mi) : null;
+      const isTbd = !m; // no confirmed data for this match yet
       const centerY = 40 + slotH * mi + slotH / 2;
       const aY = centerY - BOX_H - GAP / 2;
       const bY = centerY + GAP / 2;
-      const isEmpty = !m;
+
       elems.push(
         <g key={`m${ri}_${mi}`}>
-          <NameBox ri={ri} mi={mi} side="a" x={colX} y={aY} name={m?.a?.name} empty={isEmpty} />
-          <NameBox ri={ri} mi={mi} side="b" x={colX} y={bY} name={m?.b?.name} empty={isEmpty} />
-          {ri < visibleRounds - 1 && !isEmpty && (() => {
+          <NameBox ri={ri} mi={mi} side="a" x={colX} y={aY} name={m?.a?.name} isTbd={isTbd} />
+          <NameBox ri={ri} mi={mi} side="b" x={colX} y={bY} name={m?.b?.name} isTbd={isTbd} />
+
+          {/* Connector lines to next round — always draw skeleton */}
+          {ri < TOTAL_ROUNDS - 1 && (() => {
             const nextSlotH = svgH / matchCount(ri + 1);
             const nextMi = Math.floor(mi / 2);
             const nextCenterY = 40 + nextSlotH * nextMi + nextSlotH / 2;
@@ -158,12 +169,15 @@ function BracketSVG({ rounds, votes, activeRound, activeMatch, mode, animWinner 
             const midX = fromX + (toX - fromX) / 2;
             const toY = nextY + BOX_H / 2;
             const clr = isActive(ri, mi) ? "#6366f1" : isDone(ri, mi) ? "#16a34a" : "#e5e7eb";
+            const sw = isDone(ri, mi) ? 1.5 : 0.5;
             return (
               <path key={`conn${ri}_${mi}`}
                 d={`M${fromX} ${fromY} L${midX} ${fromY} L${midX} ${toY} L${toX} ${toY}`}
-                fill="none" stroke={clr} strokeWidth={isDone(ri, mi) ? 1.5 : 0.7} />
+                fill="none" stroke={clr} strokeWidth={sw} strokeDasharray={isTbd ? "3 3" : "none"} />
             );
           })()}
+
+          {/* Active match highlight ring */}
           {isActive(ri, mi) && (
             <rect x={colX - 4} y={aY - 4} width={BOX_W + 8} height={BOX_H * 2 + GAP + 8} rx={8}
               fill="none" stroke="#6366f1" strokeWidth={1.5} strokeDasharray="4 2" opacity={0.6} />
@@ -223,6 +237,8 @@ export default function App() {
   const [names, setNames] = useState(Array(16).fill(""));
   const [game, setGame] = useState(null);
   const [votes, setVotes] = useState({});
+  // voterVotes: tracks what THIS client has voted, keyed by matchKey
+  // We also watch game.revoteKey in Firebase — when it changes, we clear that local vote
   const [voterVotes, setVoterVotes] = useState({});
   const [mode, setMode] = useState(null);
   const [showCountdown, setShowCountdown] = useState(false);
@@ -230,13 +246,12 @@ export default function App() {
   const [animWinner, setAnimWinner] = useState(null);
   const [copied, setCopied] = useState(false);
 
-  // Track previous round to detect round changes for voters
   const prevRoundRef = useRef(null);
-  const prevMatchRef = useRef(null);
+  // Track the last revoteKey we saw so we can clear local vote when it changes
+  const prevRevoteKeyRef = useRef(null);
 
   const voteLink = `${typeof window !== "undefined" ? window.location.href.split("?")[0] : ""}?join=1`;
 
-  // Subscribe to Firebase
   useEffect(() => {
     const gameRef = ref(db, GAME_REF);
     const votesRef = ref(db, VOTES_REF);
@@ -246,7 +261,6 @@ export default function App() {
       setGame(data);
       if (data?.mode) setMode(data.mode);
     });
-
     const unsubVotes = onValue(votesRef, snap => {
       setVotes(snap.val() || {});
     });
@@ -262,18 +276,27 @@ export default function App() {
     return () => { unsubGame(); unsubVotes(); };
   }, []);
 
-  // For voters in "single" mode: show bracket view when round advances
+  // When game.revoteKey changes, clear that match's local vote so voter can re-vote
+  useEffect(() => {
+    if (!game?.revoteKey) return;
+    if (game.revoteKey !== prevRevoteKeyRef.current) {
+      prevRevoteKeyRef.current = game.revoteKey;
+      setVoterVotes(prev => {
+        const u = { ...prev };
+        delete u[game.revoteKey];
+        return u;
+      });
+    }
+  }, [game?.revoteKey]);
+
+  // Voter: show bracket interstitial when round advances
   useEffect(() => {
     if (!game || isAdmin) return;
-    const { currentRound, currentMatch, mode: gMode } = game;
-
-    // Round advanced → show bracket interstitial
-    if (gMode === "single" && prevRoundRef.current !== null && prevRoundRef.current !== currentRound) {
+    if (prevRoundRef.current !== null && prevRoundRef.current !== game.currentRound) {
       setBracketView(true);
     }
-    prevRoundRef.current = currentRound;
-    prevMatchRef.current = currentMatch;
-  }, [game?.currentRound, game?.currentMatch, isAdmin]);
+    prevRoundRef.current = game.currentRound;
+  }, [game?.currentRound, isAdmin]);
 
   // Voter: redirect to results when champion set
   useEffect(() => {
@@ -288,7 +311,7 @@ export default function App() {
     const rounds = initRounds(names);
     set(ref(db, GAME_REF), {
       rounds, mode, currentRound: 0, currentMatch: 0,
-      votingOpen: false, champion: null,
+      votingOpen: false, champion: null, revoteKey: null,
     });
     set(ref(db, VOTES_REF), {});
     setVoterVotes({});
@@ -315,10 +338,14 @@ export default function App() {
   };
 
   const handleRevote = () => {
+    if (!game) return;
+    // Reset the vote in Firebase
     set(ref(db, `bracket/votes/${curKey}`), { a: 0, b: 0 });
+    // Clear admin's own local vote for this key
     setVoterVotes(prev => { const u = { ...prev }; delete u[curKey]; return u; });
     setShowCountdown(false);
-    set(ref(db, GAME_REF), { ...game, votingOpen: true });
+    // Write revoteKey to Firebase so all voter clients clear their local vote
+    set(ref(db, GAME_REF), { ...game, votingOpen: true, revoteKey: curKey });
   };
 
   const handleCountdownDone = () => {
@@ -374,7 +401,6 @@ export default function App() {
     });
   };
 
-  // Derive live state
   const rounds       = game?.rounds || null;
   const currentRound = game?.currentRound ?? 0;
   const currentMatch = game?.currentMatch ?? 0;
@@ -405,7 +431,7 @@ export default function App() {
         <button style={{ ...s.btn, ...s.btnGhost }} onClick={() => {
           set(ref(db, "bracket"), null);
           setGame(null); setVotes({}); setVoterVotes({});
-          prevRoundRef.current = null; prevMatchRef.current = null;
+          prevRoundRef.current = null; prevRevoteKeyRef.current = null;
           setView("home");
         }}>🔁 Start Over</button>
       )}
@@ -465,7 +491,7 @@ export default function App() {
   if (view === "bracket" && rounds) {
     const curMatches = rounds[currentRound];
     return (
-      <div style={s.page}><div style={{ ...s.card, maxWidth: 720, padding: "20px 16px" }}>
+      <div style={s.page}><div style={{ ...s.card, maxWidth: 760, padding: "20px 16px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
           <h2 style={{ ...s.title, margin: 0, fontSize: 18 }}>
             {mode === "single"
@@ -483,9 +509,9 @@ export default function App() {
             {copied ? "✅ Copied!" : "📋 Copy Voting Link"}
           </button>
         </div>
+
         <BracketSVG rounds={rounds} votes={votes} activeRound={currentRound} activeMatch={currentMatch} mode={mode} animWinner={animWinner} />
 
-        {/* Live vote tally for single mode */}
         {mode === "single" && votingOpen && curMatch && (
           <div style={{ background: "#f5f3ff", border: "1px solid #c4b5fd", borderRadius: 10, padding: "10px 14px", margin: "10px 0", textAlign: "center" }}>
             <p style={{ margin: "0 0 4px", fontSize: 12, color: "#7c3aed", fontWeight: 600 }}>Live Votes</p>
@@ -525,9 +551,8 @@ export default function App() {
       </div></div>
     );
 
-    // Bracket interstitial between rounds (single mode only)
     if (bracketView && mode === "single") return (
-      <div style={s.page}><div style={{ ...s.card, maxWidth: 720, padding: "20px 16px" }}>
+      <div style={s.page}><div style={{ ...s.card, maxWidth: 760, padding: "20px 16px" }}>
         <h2 style={s.title}>📊 {ROUND_NAMES[currentRound] || `Round ${currentRound + 1}`}</h2>
         <p style={s.sub}>Here's the bracket — voting opens soon!</p>
         <BracketSVG rounds={rounds} votes={votes} activeRound={currentRound} activeMatch={currentMatch} mode={mode} />
@@ -538,17 +563,16 @@ export default function App() {
       </div></div>
     );
 
-    // Waiting for voting to open
     if (!votingOpen) return (
-      <div style={s.page}><div style={s.card}>
-        <div style={{ fontSize: 40 }}>⏳</div>
+      <div style={s.page}><div style={{ ...s.card, maxWidth: 760, padding: "20px 16px" }}>
+        <div style={{ fontSize: 40, marginBottom: 8 }}>⏳</div>
         <h2 style={s.title}>Voting Not Open Yet</h2>
-        <p style={s.sub}>You'll be taken in automatically when the admin opens voting — keep this page open!</p>
-        {rounds && <BracketSVG rounds={rounds} votes={votes} activeRound={currentRound} activeMatch={currentMatch} mode={mode} />}
+        <p style={s.sub}>You'll be taken in automatically when the admin opens voting!</p>
+        <BracketSVG rounds={rounds} votes={votes} activeRound={currentRound} activeMatch={currentMatch} mode={mode} />
       </div></div>
     );
 
-    // ── Single game voting ──
+    // ── Single game ──
     if (mode === "single" && curMatch) {
       const picked = voterVotes[curKey];
       return (
@@ -572,7 +596,7 @@ export default function App() {
       );
     }
 
-    // ── Round-by-round voting ──
+    // ── Round by round ──
     if (mode === "rounds") {
       const curMatches = rounds[currentRound];
       const allVoted = curMatches.every((_, i) => voterVotes[mkKey(currentRound, i)] !== undefined);
@@ -605,7 +629,7 @@ export default function App() {
       );
     }
 
-    // ── All at once voting ──
+    // ── All at once ──
     if (mode === "all") {
       const simR = buildSimRounds(rounds, votes);
       const total = simR.reduce((sum, r) => sum + r.length, 0);
