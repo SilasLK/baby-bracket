@@ -98,12 +98,18 @@ function BracketSVG({ rounds, votes, activeRound, activeMatch, mode, animWinner 
   const qfR  = [0,1].map(i => ({ x: colX[4], aY: 30+BOX_H/2+i*240, bY: 30+BOX_H/2+i*240+BOX_H+GAP }));
   const r16R = [0,1,2,3].map(i => ({ x: colX[5], aY: 30+i*120, bY: 30+i*120+BOX_H+GAP }));
 
-  // Project future rounds
+  // Only project rounds that have actually been decided
   const projected = [...rounds];
   let pri = 0;
   while (pri < projected.length) {
     const cur = projected[pri];
     if (cur.length === 1) break;
+    // Only advance if all matches in this round are done
+    const roundDone = cur.every((_, mi) => {
+      const v = votes[mkKey(pri, mi)] || { a: 0, b: 0 };
+      return v.a + v.b > 0 && pri < activeRound;
+    });
+    if (!roundDone) break;
     const winners = cur.map((m, mi) => {
       const v = votes[mkKey(pri, mi)] || { a: 0, b: 0 };
       return v.a >= v.b ? m.a : m.b;
