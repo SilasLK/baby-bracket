@@ -86,161 +86,135 @@ function buildSimRounds(rounds, votes) {
 
 // ─── Bracket SVG ─────────────────────────────────────────────────────────────
 function BracketSVG({ rounds, votes, activeRound, activeMatch, mode, animWinner }) {
-  const W = 680, BOX_W = 90, BOX_H = 26, GAP = 10;
-  const finalX = (W - BOX_W) / 2;
-  const colX = { 0: 30, 1: 150, 2: 270, 3: 320, 4: 440, 5: 560 };
+  const W = 680, BOX_W = 110, BOX_H = 28, GAP = 10;
 
-  const r16L = [0,1,2,3].map(i => ({ x: colX[0], aY: 30+i*120, bY: 30+i*120+BOX_H+GAP }));
-  const qfL  = [0,1].map(i => ({ x: colX[1], aY: 30+BOX_H/2+i*240, bY: 30+BOX_H/2+i*240+BOX_H+GAP }));
-  const sfL  = [{ x: colX[2], aY: 30+BOX_H/2+120, bY: 30+BOX_H/2+120+BOX_H+GAP }];
-  const fin  = [{ x: finalX, aY: 232, bY: 232+BOX_H+GAP }];
-  const sfR  = [{ x: colX[3], aY: 30+BOX_H/2+120, bY: 30+BOX_H/2+120+BOX_H+GAP }];
-  const qfR  = [0,1].map(i => ({ x: colX[4], aY: 30+BOX_H/2+i*240, bY: 30+BOX_H/2+i*240+BOX_H+GAP }));
-  const r16R = [0,1,2,3].map(i => ({ x: colX[5], aY: 30+i*120, bY: 30+i*120+BOX_H+GAP }));
-
-  // Only project rounds that have actually been decided
-  const projected = [...rounds];
-  let pri = 0;
-  while (pri < projected.length) {
-    const cur = projected[pri];
-    if (cur.length === 1) break;
-    // Only advance if all matches in this round are done
-    const roundDone = cur.every((_, mi) => {
-      const v = votes[mkKey(pri, mi)] || { a: 0, b: 0 };
-      return v.a + v.b > 0 && pri < activeRound;
-    });
-    if (!roundDone) break;
-    const winners = cur.map((m, mi) => {
-      const v = votes[mkKey(pri, mi)] || { a: 0, b: 0 };
-      return v.a >= v.b ? m.a : m.b;
-    });
-    const np = [];
-    for (let i = 0; i < winners.length; i += 2) {
-      np.push({ a: winners[i], b: winners[i + 1] });
-    }
-    if (pri + 1 >= projected.length) projected.push(np);
-    pri++;
-  }
-
-  const getMatch = (ri, mi) => projected[ri] && projected[ri][mi];
-  const lv = (ri, mi) => votes[mkKey(ri, mi)] || { a: 0, b: 0 };
-  const isDone = (ri, mi) => { const v = lv(ri, mi); return v.a + v.b > 0 && ri < activeRound; };
-  const winSide = (ri, mi) => { const v = lv(ri, mi); return v.a >= v.b ? "a" : "b"; };
+  const isDone = (ri, mi) => {
+    const v = votes[mkKey(ri, mi)] || { a: 0, b: 0 };
+    return v.a + v.b > 0 && ri < activeRound;
+  };
+  const winSide = (ri, mi) => {
+    const v = votes[mkKey(ri, mi)] || { a: 0, b: 0 };
+    return v.a >= v.b ? "a" : "b";
+  };
   const isActive = (ri, mi) => mode === "single" && ri === activeRound && mi === activeMatch;
 
-  const NameBox = ({ ri, mi, side, x, y, name, isProj }) => {
+  // Build only confirmed rounds (no projection)
+  const confirmed = [...rounds];
+
+  // For each round, compute layout
+  const totalRounds = 4;
+  const roundCount = confirmed.length;
+
+  // Show up to current round + 1 (next empty round)
+  const visibleRounds = Math.min(activeRound + 2, totalRounds);
+
+  // Column width
+  const colW = W / visibleRounds;
+
+  // Number of slots in round 0 = 16 names = 8 matches
+  // Each subsequent round halves
+  const matchCount = (ri) => Math.pow(2, totalRounds - 1 - ri) / 2;
+
+  // Height based on round 0 slots
+  const svgH = Math.max(400, matchCount(0) * (BOX_H * 2 + GAP + 20) + 60);
+
+  const getMatch = (ri, mi) => confirmed[ri] && confirmed[ri][mi];
+
+  const NameBox = ({ ri, mi, side, x, y, name, empty }) => {
     const active = isActive(ri, mi);
     const done = isDone(ri, mi);
     const isW = done && winSide(ri, mi) === side;
     const isL = done && winSide(ri, mi) !== side;
     const isAW = animWinner && animWinner.ri === ri && animWinner.mi === mi && animWinner.side === side;
     let fill = "#f3f4f6", stroke = "#e5e7eb", textFill = "#374151", opacity = 1;
+    if (empty)   { fill = "#fafafa"; stroke = "#f0f0f0"; textFill = "#d1d5db"; }
     if (active)  { fill = "#eef2ff"; stroke = "#6366f1"; textFill = "#4338ca"; }
     if (isW)     { fill = "#dcfce7"; stroke = "#16a34a"; textFill = "#15803d"; }
-    if (isL)     { fill = "#f9fafb"; stroke = "#e5e7eb"; textFill = "#9ca3af"; opacity = 0.6; }
+    if (isL)     { fill = "#f9fafb"; stroke = "#e5e7eb"; textFill = "#9ca3af"; opacity = 0.5; }
     if (isAW)    { fill = "#fef9c3"; stroke = "#ca8a04"; textFill = "#92400e"; }
-    if (isProj && !isW && !isL && !active) { fill = "#f8f9ff"; stroke = "#c7d2fe"; textFill = "#818cf8"; }
-    const label = name ? (name.length > 10 ? name.slice(0, 10) + "…" : name) : "TBD";
+    const label = empty ? "TBD" : name ? (name.length > 12 ? name.slice(0, 12) + "…" : name) : "TBD";
     return (
       <g opacity={opacity}>
-        <rect x={x} y={y} width={BOX_W} height={BOX_H} rx={4} fill={fill} stroke={stroke} strokeWidth={active ? 1.5 : 0.7} />
-        <text x={x+BOX_W/2} y={y+BOX_H/2} textAnchor="middle" dominantBaseline="central"
-          fontSize={10} fontWeight={active || isW ? 600 : 400} fill={textFill} fontFamily="system-ui,sans-serif">
+        <rect x={x} y={y} width={BOX_W} height={BOX_H} rx={5} fill={fill} stroke={stroke} strokeWidth={active ? 1.8 : 0.7} />
+        <text x={x + BOX_W / 2} y={y + BOX_H / 2} textAnchor="middle" dominantBaseline="central"
+          fontSize={11} fontWeight={active || isW ? 700 : 400} fill={textFill} fontFamily="system-ui,sans-serif">
           {label}
         </text>
       </g>
     );
   };
 
-  const Conn = ({ fromX, fromAY, fromBY, toX, toY, dir, active }) => {
-    const midY = (fromAY + BOX_H/2 + fromBY + BOX_H/2) / 2;
-    const outX = dir === 1 ? fromX + BOX_W : fromX;
-    const inX  = dir === 1 ? toX : toX + BOX_W;
-    const clr = active ? "#6366f1" : "#d1d5db";
-    const sw  = active ? 1.2 : 0.5;
-    return (
-      <g>
-        <line x1={outX} y1={fromAY+BOX_H/2} x2={outX} y2={midY} stroke={clr} strokeWidth={sw} />
-        <line x1={outX} y1={fromBY+BOX_H/2} x2={outX} y2={midY} stroke={clr} strokeWidth={sw} />
-        <line x1={outX} y1={midY} x2={inX}  y2={midY}           stroke={clr} strokeWidth={sw} />
-        <line x1={inX}  y1={midY} x2={inX}  y2={toY+BOX_H/2}   stroke={clr} strokeWidth={sw} />
-      </g>
-    );
-  };
-
   const elems = [];
 
-  for (let mi = 0; mi < 4; mi++) {
-    const m = getMatch(0, mi); if (!m) continue;
-    const p = r16L[mi];
-    elems.push(<g key={`r16l${mi}`}><NameBox ri={0} mi={mi} side="a" x={p.x} y={p.aY} name={m.a.name} /><NameBox ri={0} mi={mi} side="b" x={p.x} y={p.bY} name={m.b.name} /></g>);
-  }
-  for (let mi = 0; mi < 2; mi++) {
-    const m = getMatch(1, mi); if (!m) continue;
-    const p = qfL[mi], f0 = r16L[mi*2], f1 = r16L[mi*2+1];
-    elems.push(<g key={`qfl${mi}`}><Conn fromX={colX[0]} fromAY={f0.aY} fromBY={f0.bY} toX={colX[1]} toY={p.aY} dir={1} active={isActive(0,mi*2)} /><Conn fromX={colX[0]} fromAY={f1.aY} fromBY={f1.bY} toX={colX[1]} toY={p.bY} dir={1} active={isActive(0,mi*2+1)} /><NameBox ri={1} mi={mi} side="a" x={p.x} y={p.aY} name={m.a.name} isProj={!isDone(0,mi*2)} /><NameBox ri={1} mi={mi} side="b" x={p.x} y={p.bY} name={m.b.name} isProj={!isDone(0,mi*2+1)} /></g>);
-  }
-  const mSFL = getMatch(2, 0);
-  if (mSFL) {
-    const p = sfL[0];
-    elems.push(<g key="sfl"><Conn fromX={colX[1]} fromAY={qfL[0].aY} fromBY={qfL[0].bY} toX={colX[2]} toY={p.aY} dir={1} active={isActive(1,0)} /><Conn fromX={colX[1]} fromAY={qfL[1].aY} fromBY={qfL[1].bY} toX={colX[2]} toY={p.bY} dir={1} active={isActive(1,1)} /><NameBox ri={2} mi={0} side="a" x={p.x} y={p.aY} name={mSFL.a.name} isProj /><NameBox ri={2} mi={0} side="b" x={p.x} y={p.bY} name={mSFL.b.name} isProj /></g>);
-  }
-  for (let mi = 4; mi < 8; mi++) {
-    const m = getMatch(0, mi); if (!m) continue;
-    const p = r16R[mi-4];
-    elems.push(<g key={`r16r${mi}`}><NameBox ri={0} mi={mi} side="a" x={p.x} y={p.aY} name={m.a.name} /><NameBox ri={0} mi={mi} side="b" x={p.x} y={p.bY} name={m.b.name} /></g>);
-  }
-  for (let mi = 2; mi < 4; mi++) {
-    const m = getMatch(1, mi); if (!m) continue;
-    const idx = mi-2, p = qfR[idx], f0 = r16R[idx*2], f1 = r16R[idx*2+1];
-    elems.push(<g key={`qfr${mi}`}><Conn fromX={colX[5]} fromAY={f0.aY} fromBY={f0.bY} toX={colX[4]} toY={p.aY} dir={-1} active={isActive(0,mi*2)} /><Conn fromX={colX[5]} fromAY={f1.aY} fromBY={f1.bY} toX={colX[4]} toY={p.bY} dir={-1} active={isActive(0,mi*2+1)} /><NameBox ri={1} mi={mi} side="a" x={p.x} y={p.aY} name={m.a.name} isProj={!isDone(0,mi*2)} /><NameBox ri={1} mi={mi} side="b" x={p.x} y={p.bY} name={m.b.name} isProj={!isDone(0,mi*2+1)} /></g>);
-  }
-  const mSFR = getMatch(2, 1);
-  if (mSFR) {
-    const p = sfR[0];
-    elems.push(<g key="sfr"><Conn fromX={colX[4]} fromAY={qfR[0].aY} fromBY={qfR[0].bY} toX={colX[3]} toY={p.aY} dir={-1} active={isActive(1,2)} /><Conn fromX={colX[4]} fromAY={qfR[1].aY} fromBY={qfR[1].bY} toX={colX[3]} toY={p.bY} dir={-1} active={isActive(1,3)} /><NameBox ri={2} mi={1} side="a" x={p.x} y={p.aY} name={mSFR.a.name} isProj /><NameBox ri={2} mi={1} side="b" x={p.x} y={p.bY} name={mSFR.b.name} isProj /></g>);
-  }
-  const mFin = getMatch(3, 0);
-  if (mFin) {
-    const p = fin[0];
-    elems.push(<g key="final"><Conn fromX={colX[2]} fromAY={sfL[0].aY} fromBY={sfL[0].bY} toX={finalX} toY={p.aY} dir={1} active={isActive(2,0)} /><Conn fromX={colX[3]+BOX_W} fromAY={sfR[0].aY} fromBY={sfR[0].bY} toX={finalX+BOX_W} toY={p.bY} dir={-1} active={isActive(2,1)} /><NameBox ri={3} mi={0} side="a" x={p.x} y={p.aY} name={mFin.a.name} isProj /><NameBox ri={3} mi={0} side="b" x={p.x} y={p.bY} name={mFin.b.name} isProj /></g>);
-  }
+  for (let ri = 0; ri < visibleRounds; ri++) {
+    const matches = matchCount(ri);
+    const slotH = svgH / matches;
+    const colX = ri * colW + (colW - BOX_W) / 2;
 
-  const activePos = (() => {
-    if (mode !== "single") return null;
-    if (activeRound === 0) return activeMatch < 4 ? r16L[activeMatch] : r16R[activeMatch-4];
-    if (activeRound === 1) return activeMatch < 2 ? qfL[activeMatch] : qfR[activeMatch-2];
-    if (activeRound === 2) return activeMatch === 0 ? sfL[0] : sfR[0];
-    if (activeRound === 3) return fin[0];
-    return null;
-  })();
+    // Column header
+    elems.push(
+      <text key={`hdr${ri}`} x={ri * colW + colW / 2} y={24} textAnchor="middle"
+        fontSize={10} fill={ri === activeRound ? "#6366f1" : "#9ca3af"}
+        fontWeight={ri === activeRound ? 700 : 400} fontFamily="system-ui,sans-serif">
+        {ROUND_NAMES[ri] || `Round ${ri + 1}`}
+      </text>
+    );
 
-  const headers = [
-    { x: colX[0]+BOX_W/2, label: "R16" }, { x: colX[1]+BOX_W/2, label: "QF" },
-    { x: colX[2]+BOX_W/2, label: "SF" },  { x: W/2, label: "Final" },
-    { x: colX[3]+BOX_W/2, label: "SF" },  { x: colX[4]+BOX_W/2, label: "QF" },
-    { x: colX[5]+BOX_W/2, label: "R16" },
-  ];
+    for (let mi = 0; mi < matches; mi++) {
+      const m = getMatch(ri, mi);
+      const centerY = 40 + slotH * mi + slotH / 2;
+      const aY = centerY - BOX_H - GAP / 2;
+      const bY = centerY + GAP / 2;
+
+      const isEmpty = !m;
+      const aName = m ? m.a.name : "";
+      const bName = m ? m.b.name : "";
+
+      elems.push(
+        <g key={`m${ri}_${mi}`}>
+          <NameBox ri={ri} mi={mi} side="a" x={colX} y={aY} name={aName} empty={isEmpty} />
+          <NameBox ri={ri} mi={mi} side="b" x={colX} y={bY} name={bName} empty={isEmpty} />
+
+          {/* Connector to next round */}
+          {ri < visibleRounds - 1 && !isEmpty && (() => {
+            const nextMatches = matchCount(ri + 1);
+            const nextSlotH = svgH / nextMatches;
+            const nextMi = Math.floor(mi / 2);
+            const nextCenterY = 40 + nextSlotH * nextMi + nextSlotH / 2;
+            const nextY = mi % 2 === 0 ? nextCenterY - BOX_H - GAP / 2 : nextCenterY + GAP / 2;
+            const fromX = colX + BOX_W;
+            const toX = (ri + 1) * colW + (colW - BOX_W) / 2;
+            const fromY = (aY + BOX_H / 2 + bY + BOX_H / 2) / 2;
+            const midX = fromX + (toX - fromX) / 2;
+            const toY = nextY + BOX_H / 2;
+            const clr = isActive(ri, mi) ? "#6366f1" : isDone(ri, mi) ? "#16a34a" : "#e5e7eb";
+            const sw = isDone(ri, mi) ? 1.5 : 0.7;
+            return (
+              <path key={`conn${ri}_${mi}`}
+                d={`M${fromX} ${fromY} L${midX} ${fromY} L${midX} ${toY} L${toX} ${toY}`}
+                fill="none" stroke={clr} strokeWidth={sw} />
+            );
+          })()}
+
+          {/* Active ring */}
+          {isActive(ri, mi) && (
+            <rect x={colX - 4} y={aY - 4} width={BOX_W + 8} height={BOX_H * 2 + GAP + 8} rx={8}
+              fill="none" stroke="#6366f1" strokeWidth={1.5} strokeDasharray="4 2" opacity={0.6} />
+          )}
+        </g>
+      );
+    }
+  }
 
   return (
-    <svg width="100%" viewBox={`0 0 ${W} 510`} style={{ display: "block", fontFamily: "system-ui,sans-serif" }}>
-      <text x={W/2} y={16} textAnchor="middle" fontSize={11} fill="#9ca3af" fontFamily="system-ui,sans-serif">
-        {ROUND_NAMES[activeRound] || "Bracket"}{mode === "single" ? ` · Game ${activeMatch+1}` : ""}
-      </text>
-      {headers.map((h, i) => (
-        <text key={i} x={h.x} y={495} textAnchor="middle" fontSize={9} fill="#9ca3af" fontFamily="system-ui,sans-serif">{h.label}</text>
-      ))}
+    <svg width="100%" viewBox={`0 0 ${W} ${svgH}`} style={{ display: "block", fontFamily: "system-ui,sans-serif" }}>
       {elems}
-      {activePos && (
-        <rect x={activePos.x-4} y={activePos.aY-4} width={BOX_W+8} height={BOX_H*2+GAP+8} rx={7}
-          fill="none" stroke="#6366f1" strokeWidth={1.5} strokeDasharray="4 2" opacity={0.6} />
-      )}
     </svg>
   );
 }
 
 // ─── Countdown Reveal ─────────────────────────────────────────────────────────
-function CountdownReveal({ match, votes, onDone }) {
+function CountdownReveal({ match, votes, onDone, onRevote }) {
   const [count, setCount] = useState(3);
   const [revealed, setRevealed] = useState(false);
   useEffect(() => {
@@ -270,6 +244,7 @@ function CountdownReveal({ match, votes, onDone }) {
       </div>
       <br />
       <button onClick={onDone} style={s.btn}>Next Game →</button>
+      <button onClick={onRevote} style={{ ...s.btn, ...s.btnGhost, marginTop: 4 }}>🔁 Revote</button>
     </div>
   );
 }
@@ -285,6 +260,7 @@ export default function App() {
   const [mode, setMode] = useState(null);
   const [showCountdown, setShowCountdown] = useState(false);
   const [bracketView, setBracketView] = useState(false);
+  const [tieMatch, setTieMatch] = useState(null);
   const [animWinner, setAnimWinner] = useState(null);
   const [copied, setCopied] = useState(false);
 
@@ -346,6 +322,13 @@ export default function App() {
   const handleOpenVoting = () => set(ref(db, GAME_REF), { ...game, votingOpen: true });
 
   const handleCloseAndReveal = () => setShowCountdown(true);
+
+  const handleRevote = () => {
+    set(ref(db, `bracket/votes/${curKey}`), { a: 0, b: 0 });
+    setVoterVotes(prev => { const u = { ...prev }; delete u[curKey]; return u; });
+    setShowCountdown(false);
+    set(ref(db, GAME_REF), { ...game, votingOpen: true });
+  };
 
   const handleCountdownDone = () => {
     setShowCountdown(false);
@@ -504,7 +487,7 @@ export default function App() {
           <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }}>
             <div style={{ background: "#fff", borderRadius: 20, padding: 32, minWidth: 280, textAlign: "center" }}>
               <h3 style={{ margin: "0 0 4px" }}>{curMatch.a.name} vs {curMatch.b.name}</h3>
-              <CountdownReveal match={curMatch} votes={votes[curKey]} onDone={handleCountdownDone} />
+              <CountdownReveal match={curMatch} votes={votes[curKey]} onDone={handleCountdownDone} onRevote={handleRevote} />
             </div>
           </div>
         )}
@@ -553,10 +536,12 @@ export default function App() {
     // Single game
     if (mode === "single" && curMatch) {
       const picked = voterVotes[curKey];
+      const isTie = !votingOpen && votes[curKey] && votes[curKey].a === votes[curKey].b && votes[curKey].a > 0;
       return (
         <div style={s.page}><div style={{ ...s.card, maxWidth: 420 }}>
           <p style={{ fontSize: 12, color: "#9ca3af", margin: "0 0 4px" }}>{ROUND_NAMES[currentRound] || `Round ${currentRound+1}`} · Game {currentMatch+1}</p>
           <h2 style={{ ...s.title, fontSize: 18, marginBottom: 4 }}>Which name do you prefer?</h2>
+          {isTie && <div style={{ background: "#fef9c3", border: "1px solid #ca8a04", borderRadius: 10, padding: "10px", marginBottom: 12 }}><p style={{ margin: 0, color: "#92400e", fontWeight: 600, fontSize: 13 }}>🤝 It's a tie! The admin will start a revote.</p></div>}
           <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
             {SIDES.map(side => {
               const nm = side === "a" ? curMatch.a.name : curMatch.b.name;
@@ -569,7 +554,7 @@ export default function App() {
               );
             })}
           </div>
-          {picked && <p style={{ color: "#16a34a", fontWeight: 600, marginTop: 12, textAlign: "center", fontSize: 13 }}>✅ Voted! The next game will open automatically.</p>}
+          {picked && !isTie && <p style={{ color: "#16a34a", fontWeight: 600, marginTop: 12, textAlign: "center", fontSize: 13 }}>✅ Voted! The next game will open automatically.</p>}
         </div></div>
       );
     }
