@@ -329,14 +329,15 @@ export default function App() {
   const handleVote = (key, side) => {
     if (voterVotes[key] !== undefined) return;
     setVoterVotes(prev => ({ ...prev, [key]: side }));
-    const curA = (votes[key] && votes[key].a) || 0;
-    const curB = (votes[key] && votes[key].b) || 0;
-    const newA = side === "a" ? curA + 1 : curA;
-    const newB = side === "b" ? curB + 1 : curB;
-    set(ref(db, `bracket/votes/${key}`), { a: newA, b: newB });
+    const curVotes = votes && votes[key] ? votes[key] : { a: 0, b: 0 };
+    const newVotes = {
+      a: side === "a" ? (curVotes.a || 0) + 1 : (curVotes.a || 0),
+      b: side === "b" ? (curVotes.b || 0) + 1 : (curVotes.b || 0),
+    };
+    set(ref(db, `bracket/votes/${key}`), newVotes);
   };
 
-  const handleOpenVoting = () => pushGame({ votingOpen: true });
+  const handleOpenVoting = () => set(ref(db, GAME_REF), { ...game, votingOpen: true });
 
   const handleCloseAndReveal = () => setShowCountdown(true);
 
